@@ -1,0 +1,23 @@
+# 1단계: 현재 프로젝트 빌드해서 수정된 클래스 파일 생성
+FROM maven:3.8.6-openjdk-11-slim AS builder
+
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+COPY src ./src
+RUN mvn clean compile -DskipTests
+
+# 2단계: 기본 Jitsi 이미지에서 수정된 클래스만 교체
+FROM jitsi/jigasi:stable-10184
+
+# 수정된 클래스 파일들을 올바른 디렉토리 구조로 복사
+COPY --from=builder /app/target/classes/org/jitsi/jigasi/transcription/ /tmp/org/jitsi/jigasi/transcription/
+
+# 기존 JAR 파일에 수정된 클래스들을 덮어쓰기
+RUN cd /tmp && \
+    jar -uf /usr/share/jigasi/jigasi.jar \
+        org/jitsi/jigasi/transcription/VoskTranscriptionService*.class && \
+    rm -rf /tmp/org
+
+# 나머지는 기본 이미지 설정 그대로 사용

@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.iml
+
+# Build artifacts (제외하지 않음 - target/classes 필요)
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+README*
+
+# Test files
+src/test/
+
+# Daglo SDK (별도 이미지)
+daglo-speech-sdk/
+daglo-speech-sdk.zip
+
+# Debian packaging
+debian/
+
+# Scripts
+script/
+
+# Patch files
+*.patch
+docker-compose.patch.yml
+Dockerfile.patch

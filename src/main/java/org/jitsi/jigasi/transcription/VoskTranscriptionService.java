@@ -332,7 +332,32 @@ public class VoskTranscriptionService
                 if (sampleRate < 0)
                 {
                     sampleRate = request.getFormat().getSampleRate();
-                    session.getRemote().sendString("{\"config\" : {\"sample_rate\" : " + sampleRate + " }}");
+                    
+                    // Build config JSON with user information
+                    StringBuilder configJson = new StringBuilder();
+                    configJson.append("{\"config\" : {");
+                    configJson.append("\"sample_rate\" : ").append(sampleRate);
+                    
+                    // Add participant information from debugName (format: roomId/participantName)
+                    if (debugName != null && !debugName.isEmpty()) {
+                        configJson.append(", \"debug_name\" : \"").append(debugName).append("\"");
+                        
+                        // Extract room_id and participant_id from debugName
+                        String[] parts = debugName.split("/");
+                        if (parts.length >= 2) {
+                            configJson.append(", \"room_id\" : \"").append(parts[0]).append("\"");
+                            configJson.append(", \"participant_id\" : \"").append(parts[1]).append("\"");
+                        }
+                    }
+                    
+                    // Add language if available
+                    if (transcriptionTag != null && !transcriptionTag.isEmpty()) {
+                        configJson.append(", \"language\" : \"").append(transcriptionTag).append("\"");
+                    }
+                    
+                    configJson.append("}}");
+                    
+                    session.getRemote().sendString(configJson.toString());
                 }
                 ByteBuffer audioBuffer = ByteBuffer.wrap(request.getAudio());
                 session.getRemote().sendBytes(audioBuffer);

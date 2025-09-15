@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  # 기본 Jitsi 이미지 사용하되, 수정된 JAR로 교체
+  jigasi:
+    image: jitsi/jigasi:stable-10184
+    container_name: jigasi-transcriber
+    environment:
+      # Jigasi 모드
+      - JIGASI_MODE=transcriber
+
+      # XMPP 설정 (실제 환경에 맞게 수정)
+      - XMPP_SERVER=your-xmpp-server.com
+      - XMPP_PORT=5222
+      - XMPP_DOMAIN=meet.example.com
+      - XMPP_AUTH_DOMAIN=auth.meet.example.com
+      - XMPP_MUC_DOMAIN=conference.meet.example.com
+      - XMPP_INTERNAL_MUC_DOMAIN=internal.auth.meet.example.com
+      - XMPP_HIDDEN_DOMAIN=recorder.meet.example.com
+      - XMPP_RECORDER_DOMAIN=recorder.meet.example.com
+
+      # Jigasi 계정 (실제 계정으로 수정)
+      - JIGASI_XMPP_USER=transcriber@recorder.meet.example.com
+      - JIGASI_XMPP_PASSWORD=your-password
+
+      # STT 서비스 (Daglo)
+      - JIGASI_TRANSCRIBER_CUSTOM_SERVICE=org.jitsi.jigasi.transcription.VoskTranscriptionService
+      - JIGASI_TRANSCRIBER_VOSK_URL=ws://daglo-stt-server:2700
+
+      # STT 설정
+      - JIGASI_TRANSCRIBER_SEND_TXT=false
+      - JIGASI_TRANSCRIBER_ENABLE_SAVING=true
+      - JIGASI_TRANSCRIBER_ADVERTISE_URL=true
+      - JIGASI_TRANSCRIBER_FILTER_SILENCE=false
+      - JIGASI_TRANSCRIBER_RECORD_AUDIO=false
+
+      # 번역 설정
+      - JIGASI_TRANSCRIBER_ENABLE_TRANSLATION=false
+
+      # 기타
+      - TZ=Asia/Seoul
+    # 수정된 JAR 파일을 볼륨으로 마운트 (빌드 후 사용)
+    volumes:
+      - ./target/jigasi-2.1-SNAPSHOT.jar:/usr/share/jigasi/jigasi.jar:ro
+    depends_on:
+      - daglo-stt-server
+    networks:
+      - jigasi-network
+    restart: unless-stopped
+
+  # Daglo STT 서버
+  daglo-stt-server:
+    build:
+      context: ./daglo-speech-sdk
+      dockerfile: Dockerfile
+    container_name: daglo-stt-server
+    ports:
+      - "2700:2700"
+    environment:
+      - DAGLO_SERVER=apis.daglo.ai:9081
+      - DAGLO_API_KEY=C8Ln8rHHP435oqVuleRW509qjqDxJbLixSG9dZQVykhOv7TqlB3Q2Gw691z9sDKn6EjCjAacWroAVq6x3TsYegpvcJxDFqrYQqXIXy3vZ2tKW3NmFNbQxrOKMYjF3oFs
+      - WEBSOCKET_PORT=2700
+      - WEBSOCKET_HOST=0.0.0.0
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - jigasi-network
+
+networks:
+  jigasi-network:
+    driver: bridge
