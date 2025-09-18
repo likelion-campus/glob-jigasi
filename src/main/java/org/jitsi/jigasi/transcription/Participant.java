@@ -27,7 +27,10 @@ import org.jivesoftware.smack.packet.*;
 import org.jitsi.jigasi.stats.*;
 
 import javax.media.format.*;
-import java.nio.*;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.BufferOverflowException;
+import java.nio.ReadOnlyBufferException;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -813,4 +816,21 @@ public class Participant
     {
         return this.context;
     }
+
+    /**
+     * Check whether this participant is a moderator (owner or moderator role)
+     *
+     * @return true if the participant is a moderator or owner, false otherwise
+     */
+    public boolean isModerator()
+    {
+        if (chatMember == null)
+        {
+            return false;
+        }
+
+        ChatRoomMemberRole role = chatMember.getRole();
+        return role != null && (role.equals(ChatRoomMemberRole.OWNER) || role.equals(ChatRoomMemberRole.MODERATOR));
+    }
+
 }

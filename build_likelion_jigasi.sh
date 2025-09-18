@@ -51,6 +51,17 @@ echo "Rebuild mode: $REBUILD"
 echo "ECR에 로그인 중..."
 aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
+# 로컬에서 Maven 빌드 먼저 실행
+echo "🔨 로컬에서 Maven 빌드 실행 중..."
+mvn clean compile -DskipTests
+
+# 빌드 성공 확인
+if [ $? -ne 0 ]; then
+    echo "❌ Maven 빌드 실패!"
+    exit 1
+fi
+echo "✅ Maven 빌드 완료!"
+
 # 이미지 빌드 및 푸시
 echo "수정된 Jigasi 이미지 빌드 및 푸시 중..."
 

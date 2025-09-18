@@ -1,23 +1,24 @@
-# 1단계: 현재 프로젝트 빌드해서 수정된 클래스 파일 생성
-FROM maven:3.8.6-openjdk-11-slim AS builder
-
-WORKDIR /app
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
-
-COPY src ./src
-RUN mvn clean compile -DskipTests
-
-# 2단계: 기본 Jitsi 이미지에서 수정된 클래스만 교체
+# 기본 Jitsi 이미지 사용
 FROM jitsi/jigasi:stable-10184
 
-# 수정된 클래스 파일들을 올바른 디렉토리 구조로 복사
-COPY --from=builder /app/target/classes/org/jitsi/jigasi/transcription/ /tmp/org/jitsi/jigasi/transcription/
+# 로컬에서 빌드된 클래스 파일들을 복사
+COPY target/classes/org/jitsi/jigasi/transcription/ /tmp/org/jitsi/jigasi/transcription/
+COPY target/classes/org/jitsi/jigasi/JvbConference*.class /tmp/org/jitsi/jigasi/
+COPY target/classes/org/jitsi/jigasi/TranscriptionGateway*.class /tmp/org/jitsi/jigasi/
+COPY target/classes/org/jitsi/jigasi/CallContext.class /tmp/org/jitsi/jigasi/
 
 # 기존 JAR 파일에 수정된 클래스들을 덮어쓰기
 RUN cd /tmp && \
+    echo "=== Updating JAR file with modified classes ===" && \
+    ls -la org/jitsi/jigasi/ && \
+    echo "=== CallContext classes ===" && \
+    ls -la org/jitsi/jigasi/CallContext*.class && \
     jar -uf /usr/share/jigasi/jigasi.jar \
-        org/jitsi/jigasi/transcription/VoskTranscriptionService*.class && \
+        org/jitsi/jigasi/transcription/VoskTranscriptionService*.class \
+        org/jitsi/jigasi/transcription/Transcriber*.class \
+        org/jitsi/jigasi/transcription/Participant*.class \
+        org/jitsi/jigasi/JvbConference*.class \
+        org/jitsi/jigasi/TranscriptionGateway*.class \
+        org/jitsi/jigasi/CallContext*.class && \
+    echo "=== JAR update completed ===" && \
     rm -rf /tmp/org
-
-# 나머지는 기본 이미지 설정 그대로 사용

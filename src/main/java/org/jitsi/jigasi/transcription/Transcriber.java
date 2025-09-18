@@ -24,6 +24,7 @@ import org.jitsi.jigasi.*;
 import org.jitsi.jigasi.stats.*;
 import org.jitsi.jigasi.transcription.action.*;
 import org.jitsi.utils.logging2.*;
+import org.jitsi.utils.logging2.LoggerImpl;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
 import org.jivesoftware.smack.packet.*;
 
@@ -237,6 +238,23 @@ public class Transcriber
     }
 
     /**
+     * Legacy constructor for backward compatibility with older Jitsi versions.
+     * 
+     * @param service the transcription service which will be used to transcribe
+     * the audio streams
+     */
+    public Transcriber(AbstractTranscriptionService service)
+    {
+        this.transcriptionService = service;
+        this.logger = new LoggerImpl(Transcriber.class.getName());
+        this.context = null;
+        this.filterSilence = shouldFilterSilence();
+        
+        addTranscriptionListener(this.transcript);
+        configureTranslationManager();
+    }
+
+    /**
      * Create the translationManager using the custom translation service configured by the user.
      * Fallback to GoogleTranslationService if no custom translation service configuration.
      */
@@ -433,6 +451,7 @@ public class Transcriber
             participant.setTranslationLanguage(language);
         }
     }
+
 
     /**
      * Remove a participant from the list of participants being transcribed

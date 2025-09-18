@@ -183,7 +183,7 @@ public class VoskTranscriptionService
         {
             generateWebsocketUrl(participant);
             VoskWebsocketStreamingSession streamingSession = new VoskWebsocketStreamingSession(
-                    participant.getDebugName());
+                    participant.getDebugName(), participant);
             streamingSession.transcriptionTag = participant.getTranslationLanguage();
             if (streamingSession.transcriptionTag == null)
             {
@@ -220,6 +220,8 @@ public class VoskTranscriptionService
         private Session session;
         /* The name of the participant */
         private final String debugName;
+        /* The participant object for accessing additional information */
+        private final Participant participant;
         /* The sample rate of the audio stream we collect from the first request */
         private double sampleRate = -1.0;
         /* Last returned result so we do not return the same string twice */
@@ -239,10 +241,11 @@ public class VoskTranscriptionService
          */
         private UUID uuid = UUID.randomUUID();
 
-        VoskWebsocketStreamingSession(String debugName)
+         VoskWebsocketStreamingSession(String debugName, Participant participant)
             throws Exception
         {
             this.debugName = debugName;
+            this.participant = participant;
             WebSocketClient ws = new WebSocketClient();
             ws.start();
             ws.connect(this, new URI(websocketUrl));
@@ -355,9 +358,19 @@ public class VoskTranscriptionService
                         configJson.append(", \"language\" : \"").append(transcriptionTag).append("\"");
                     }
                     
+                    // Add moderator information
+                    if (participant != null) {
+                        configJson.append(", \"is_moderator\" : ").append(participant.isModerator());
+                        
+                        logger.info("Participant info for Vosk - ID: " + participant.getDebugName() + 
+                                   ", is_moderator: " + participant.isModerator());
+                    }
+                    
                     configJson.append("}}");
                     
-                    session.getRemote().sendString(configJson.toString());
+                    String configJsonStr = configJson.toString();
+                    logger.info("Sending config to Vosk: " + configJsonStr);
+                    session.getRemote().sendString(configJsonStr);
                 }
                 ByteBuffer audioBuffer = ByteBuffer.wrap(request.getAudio());
                 session.getRemote().sendBytes(audioBuffer);
