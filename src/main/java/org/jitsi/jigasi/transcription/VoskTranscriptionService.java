@@ -345,11 +345,19 @@ public class VoskTranscriptionService
                     if (debugName != null && !debugName.isEmpty()) {
                         configJson.append(", \"debug_name\" : \"").append(debugName).append("\"");
                         
-                        // Extract room_id and participant_id from debugName
+                        // Extract room_id from debugName
                         String[] parts = debugName.split("/");
                         if (parts.length >= 2) {
                             configJson.append(", \"room_id\" : \"").append(parts[0]).append("\"");
-                            configJson.append(", \"participant_id\" : \"").append(parts[1]).append("\"");
+                            
+                            // Use stats_id if available, otherwise use participant name from debugName
+                            String participantId = null;
+                            if (participant != null && participant.getStatsId() != null && !participant.getStatsId().isEmpty()) {
+                                participantId = participant.getStatsId();
+                            } else {
+                                participantId = parts[1]; // fallback to debugName participant part
+                            }
+                            configJson.append(", \"participant_id\" : \"").append(participantId).append("\"");
                         }
                     }
                     
@@ -362,14 +370,19 @@ public class VoskTranscriptionService
                     if (participant != null) {
                         configJson.append(", \"is_moderator\" : ").append(participant.isModerator());
                         
-                        logger.info("Participant info for Vosk - ID: " + participant.getDebugName() + 
-                                   ", is_moderator: " + participant.isModerator());
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("Participant info for Vosk - ID: " + participant.getDebugName() + 
+                                       ", is_moderator: " + participant.isModerator() + 
+                                       ", stats_id: " + participant.getStatsId());
+                        }
                     }
                     
                     configJson.append("}}");
                     
                     String configJsonStr = configJson.toString();
-                    logger.info("Sending config to Vosk: " + configJsonStr);
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Sending config to Vosk: " + configJsonStr);
+                    }
                     session.getRemote().sendString(configJsonStr);
                 }
                 ByteBuffer audioBuffer = ByteBuffer.wrap(request.getAudio());

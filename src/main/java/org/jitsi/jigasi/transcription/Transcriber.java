@@ -352,6 +352,22 @@ public class Transcriber
             if (chatRoomMember instanceof ChatRoomMemberJabberImpl)
             {
                 Presence presence = ((ChatRoomMemberJabberImpl) chatRoomMember).getLastPresence();
+                
+                if (presence != null) {
+                    // stats_id extension 찾아서 설정
+                    for (ExtensionElement ext : presence.getExtensions()) {
+                        if (ext instanceof org.jitsi.xmpp.extensions.jitsimeet.StatsId) {
+                            org.jitsi.xmpp.extensions.jitsimeet.StatsId statsIdExt = 
+                                (org.jitsi.xmpp.extensions.jitsimeet.StatsId) ext;
+                            String actualStatsId = statsIdExt.getStatsId();
+                            
+                            if (actualStatsId != null && !actualStatsId.isEmpty()) {
+                                participant.setStatsId(actualStatsId);
+                            }
+                            break; // StatsId를 찾았으므로 루프 종료
+                        }
+                    }
+                }
 
                 TranscriptionLanguageExtension transcriptionLanguageExtension
                     = presence.getExtension(TranscriptionLanguageExtension.class);

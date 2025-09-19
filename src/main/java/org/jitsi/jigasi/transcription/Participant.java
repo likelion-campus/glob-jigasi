@@ -162,6 +162,11 @@ public class Participant
     private CallContext context;
 
     /**
+     * The stats ID from XMPP StatsId extension (e.g., "Barrett-IuH")
+     */
+    private String statsId;
+
+    /**
      * Create a participant with a given name and audio stream
      *
      * @param transcriber the transcriber which created this participant
@@ -831,6 +836,26 @@ public class Participant
 
         ChatRoomMemberRole role = chatMember.getRole();
         return role != null && (role.equals(ChatRoomMemberRole.OWNER) || role.equals(ChatRoomMemberRole.MODERATOR));
+    }
+
+    /**
+     * Get the stats ID from XMPP StatsId extension
+     *
+     * @return the stats ID or null if not set
+     */
+    public String getStatsId()
+    {
+        return statsId;
+    }
+
+    /**
+     * Set the stats ID from XMPP StatsId extension
+     *
+     * @param statsId the stats ID to set
+     */
+    public void setStatsId(String statsId)
+    {
+        this.statsId = statsId;
     }
 
 }
