@@ -49,6 +49,31 @@ public class Participant
      * The logger of this class
      */
     private final Logger logger;
+    
+    /**
+     * Maximum number of STT connection retry attempts
+     */
+    private static final int MAX_STT_RETRY_ATTEMPTS = 3;
+    
+    /**
+     * Base delay between STT connection retry attempts (in milliseconds)
+     */
+    private static final long STT_RETRY_BASE_DELAY_MS = 1000;
+    
+    /**
+     * Current retry attempt counter for STT connection
+     */
+    private int sttRetryCount = 0;
+    
+    /**
+     * Flag to prevent multiple concurrent connection attempts
+     */
+    private volatile boolean isConnecting = false;
+    
+    /**
+     * Last connection attempt timestamp to prevent too frequent retries
+     */
+    private volatile long lastConnectionAttempt = 0;
 
     /**
      * The expected amount of bytes each given buffer will have. Webrtc
@@ -511,25 +536,136 @@ public class Participant
 
     /**
      * When a participant joined it accepts audio and will send it
-     * to be transcribed
+     * to be transcribed. STT connection will be established lazily
+     * when first audio data is received.
      */
     void joined()
     {
-        TranscriptionService.StreamingRecognitionSession
-                session = sessions.getOrDefault(getLanguageKey(), null);
+        // Don't create STT session immediately - wait for actual audio data
+        isCompleted = false;
+        
+        if (logger.isDebugEnabled()) {
+            logger.debug("Participant " + identifier + " joined - STT connection will be created on first audio");
+        }
+    }
 
+    /**
+     * Ensures that a streaming session exists for this participant.
+     * Creates one if it doesn't exist yet (lazy connection).
+     * Implements retry logic with exponential backoff and prevents duplicate connections.
+     * This method is called when audio data arrives (every 20ms).
+     */
+    private void ensureStreamingSessionExists()
+    {
+        String languageKey = getLanguageKey();
+        TranscriptionService.StreamingRecognitionSession session = sessions.get(languageKey);
+        
+        // Check if session exists and is still active
         if (session != null && !session.ended())
         {
-            return; // no need to create new session
+            sttRetryCount = 0; // Reset retry counter on successful connection
+            isConnecting = false; // Reset connecting flag
+            return; // Session already exists and is active
         }
-
+        
+        // Prevent multiple concurrent connection attempts
+        if (isConnecting)
+        {
+            if (logger.isDebugEnabled()) {
+                logger.debug("STT connection attempt already in progress for participant " + identifier);
+            }
+            return; // Connection attempt already in progress
+        }
+        
+        // Check if enough time has passed since last connection attempt (prevent spam)
+        long currentTime = System.currentTimeMillis();
+        long timeSinceLastAttempt = currentTime - lastConnectionAttempt;
+        long minRetryInterval = STT_RETRY_BASE_DELAY_MS; // Minimum 1 second between attempts
+        
+        if (timeSinceLastAttempt < minRetryInterval)
+        {
+            if (logger.isDebugEnabled()) {
+                logger.debug("STT connection attempt too soon for participant " + identifier + 
+                           ". Wait " + (minRetryInterval - timeSinceLastAttempt) + "ms more.");
+            }
+            return; // Too soon to retry
+        }
+        
+        // If session is null or ended, try to create a new one with retry logic
         if (transcriber.getTranscriptionService().supportsStreamRecognition())
         {
-            session = transcriber.getTranscriptionService()
-                .initStreamingSession(this);
-            session.addTranscriptionListener(this);
-            sessions.put(getLanguageKey(), session);
-            isCompleted = false;
+            createStreamingSessionWithRetry(languageKey);
+        }
+    }
+    
+    /**
+     * Creates a streaming session with retry logic and exponential backoff.
+     * Retries up to MAX_STT_RETRY_ATTEMPTS times with increasing delays.
+     * Uses connection flags to prevent duplicate attempts.
+     */
+    private void createStreamingSessionWithRetry(String languageKey)
+    {
+        // Set connecting flag and timestamp
+        isConnecting = true;
+        lastConnectionAttempt = System.currentTimeMillis();
+        
+        try
+        {
+            for (int attempt = 1; attempt <= MAX_STT_RETRY_ATTEMPTS; attempt++)
+            {
+                try
+                {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Creating STT connection for participant " + identifier + 
+                                   " (attempt " + attempt + "/" + MAX_STT_RETRY_ATTEMPTS + ")");
+                    }
+                    
+                    TranscriptionService.StreamingRecognitionSession session = 
+                        transcriber.getTranscriptionService().initStreamingSession(this);
+                    session.addTranscriptionListener(this);
+                    sessions.put(languageKey, session);
+                    isCompleted = false;
+                    sttRetryCount = 0; // Reset retry counter on success
+                    
+                    logger.info("STT connection successfully created for participant " + identifier + 
+                               " after " + attempt + " attempt(s)");
+                    return; // Success - exit retry loop
+                }
+                catch (Exception e)
+                {
+                    sttRetryCount = attempt;
+                    
+                    if (attempt == MAX_STT_RETRY_ATTEMPTS)
+                    {
+                        logger.error("Failed to create STT streaming session for participant " + identifier + 
+                                   " after " + MAX_STT_RETRY_ATTEMPTS + " attempts. Giving up.", e);
+                        return; // Give up after max attempts
+                    }
+                    
+                    // Calculate exponential backoff delay
+                    long delayMs = STT_RETRY_BASE_DELAY_MS * (1L << (attempt - 1)); // 1s, 2s, 4s
+                    
+                    logger.warn("STT connection failed for participant " + identifier + 
+                               " (attempt " + attempt + "/" + MAX_STT_RETRY_ATTEMPTS + 
+                               "). Retrying in " + delayMs + "ms. Error: " + e.getMessage());
+                    
+                    try
+                    {
+                        Thread.sleep(delayMs);
+                    }
+                    catch (InterruptedException ie)
+                    {
+                        logger.warn("STT retry sleep interrupted for participant " + identifier);
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            // Always reset connecting flag when done (success or failure)
+            isConnecting = false;
         }
     }
 
@@ -565,6 +701,9 @@ public class Participant
         {
             audioFormat = (AudioFormat) buffer.getFormat();
         }
+
+        // Lazy connection: Create STT session only when first audio data arrives
+        ensureStreamingSessionExists();
 
         byte[] audio = (byte[]) buffer.getData();
 

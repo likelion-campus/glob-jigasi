@@ -254,7 +254,16 @@ public class VoskTranscriptionService
         @OnWebSocketClose
         public void onClose(int statusCode, String reason)
         {
+            logger.warn("STT WebSocket connection closed for participant " + debugName + 
+                       ". Status: " + statusCode + ", Reason: " + reason);
             this.session = null;
+            
+            // Notify participant about connection loss for potential retry
+            if (participant != null) {
+                // The participant will handle reconnection on next audio data
+                logger.info("STT connection lost for participant " + debugName + 
+                           ". Will retry on next audio data.");
+            }
         }
 
         @OnWebSocketConnect
@@ -325,11 +334,28 @@ public class VoskTranscriptionService
         @OnWebSocketError
         public void onError(Throwable cause)
         {
-            logger.error("Error while streaming audio data to transcription service" , cause);
+            logger.error("STT WebSocket error for participant " + debugName + ": " + cause.getMessage(), cause);
+            
+            // Mark session as null to trigger reconnection attempt
+            this.session = null;
+            
+            // The participant will handle reconnection on next audio data
+            if (participant != null) {
+                logger.info("STT connection error for participant " + debugName + 
+                           ". Will retry on next audio data.");
+            }
         }
 
         public void sendRequest(TranscriptionRequest request)
         {
+            // Check if session is still active before sending
+            if (session == null || !session.isOpen())
+            {
+                logger.warn("STT session is not available for participant " + debugName + 
+                           ". Session will be recreated on next audio data.");
+                return; // Skip this audio packet - session will be recreated by participant
+            }
+            
             try
             {
                 if (sampleRate < 0)
@@ -421,7 +447,7 @@ public class VoskTranscriptionService
 
         public boolean ended()
         {
-            return session == null;
+            return session == null || !session.isOpen();
         }
     }
 
