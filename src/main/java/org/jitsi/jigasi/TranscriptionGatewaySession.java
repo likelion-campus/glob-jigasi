@@ -402,33 +402,98 @@ public class TranscriptionGatewaySession
 
     private boolean isTranscriptionRequested()
     {
-        return transcriber.isAnyParticipantRequestingTranscription()
-                || isBackendTranscribingEnabled
-                || this.numberOfVisitorsRequestingTranscription > 0;
+        boolean participantRequesting = transcriber.isAnyParticipantRequestingTranscription();
+        boolean backendEnabled = isBackendTranscribingEnabled;
+        boolean visitorsRequesting = this.numberOfVisitorsRequestingTranscription > 0;
+        
+        // 새로운 로직: 전사가 한번 시작되면 참가자가 있는 동안 계속 유지
+        boolean hasParticipants = false;
+        if (getJvbChatRoom() != null) {
+            // focus를 제외한 실제 참가자 수 계산 (transcriber 본인도 제외)
+            int totalMembers = getJvbChatRoom().getMembersCount();
+            int realParticipants = totalMembers - 1; // focus 제외
+            if (realParticipants > 1) { // transcriber 본인도 제외
+                realParticipants = realParticipants - 1;
+            }
+            hasParticipants = realParticipants > 0;
+        }
+        
+        // 기존 조건 중 하나라도 true이거나, 전사가 시작되고 참가자가 있으면 계속
+        boolean originalCondition = participantRequesting || backendEnabled || visitorsRequesting;
+        boolean transcriptionStartedAndHasParticipants = transcriber.isTranscribing() && hasParticipants;
+        
+        boolean result = originalCondition || transcriptionStartedAndHasParticipants;
+        
+        if (logger.isDebugEnabled()) {
+            logger.debug("Transcription requested check - participantRequesting: " + participantRequesting + 
+                        ", backendEnabled: " + backendEnabled + 
+                        ", visitorsRequesting: " + visitorsRequesting + 
+                        ", hasParticipants: " + hasParticipants + 
+                        ", result: " + result);
+        }
+        
+        return result;
     }
 
     private void maybeStopTranscription()
     {
-        if (transcriber.isTranscribing() && !isTranscriptionRequested())
+        boolean isTranscribing = transcriber.isTranscribing();
+        boolean isRequested = isTranscriptionRequested();
+        
+        if (logger.isDebugEnabled()) {
+            logger.debug("maybeStopTranscription - isTranscribing: " + isTranscribing + 
+                        ", isRequested: " + isRequested);
+        }
+        
+        if (isTranscribing && !isRequested)
         {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Scheduling transcription stop check in 3 seconds");
+            }
+            
             // let's give some time for the transcriptions to finish
             leaveThreadPool.schedule(() -> {
-                    if (transcriber.isTranscribing() && !isTranscriptionRequested())
+                    boolean stillTranscribing = transcriber.isTranscribing();
+                    boolean stillRequested = isTranscriptionRequested();
+                    
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Transcription stop recheck - stillTranscribing: " + stillTranscribing + 
+                                    ", stillRequested: " + stillRequested + 
+                                    ", leavingParticipants: " + this.numberOfScheduledParticipantsLeaving);
+                    }
+                    
+                    if (stillTranscribing && !stillRequested)
                     {
                         if (this.numberOfScheduledParticipantsLeaving == 0)
                         {
+                            logger.info("Stopping transcription service");
                             jvbConference.stop();
                         }
                         else
                         {
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("Participants still leaving, retrying transcription stop check");
+                            }
                             // there seems to be still participants leaving, give them time before transcriber leaves
                             maybeStopTranscription();
+                        }
+                    }
+                    else
+                    {
+                        if (logger.isDebugEnabled()) {
+                            logger.debug("Transcription conditions changed, continuing transcription");
                         }
                     }
                 },
                 PRESENCE_UPDATE_WAIT_UNTIL_LEAVE_DURATION,
                 TimeUnit.MILLISECONDS
             );
+        }
+        else
+        {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Transcription stop conditions not met, continuing transcription");
+            }
         }
     }
 
