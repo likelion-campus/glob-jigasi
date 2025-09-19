@@ -350,13 +350,8 @@ public class VoskTranscriptionService
                         if (parts.length >= 2) {
                             configJson.append(", \"room_id\" : \"").append(parts[0]).append("\"");
                             
-                            // Use stats_id if available, otherwise use participant name from debugName
-                            String participantId = null;
-                            if (participant != null && participant.getStatsId() != null && !participant.getStatsId().isEmpty()) {
-                                participantId = participant.getStatsId();
-                            } else {
-                                participantId = parts[1]; // fallback to debugName participant part
-                            }
+                            // participant_id는 기존처럼 debugName에서 추출한 participant name 사용
+                            String participantId = parts[1];
                             configJson.append(", \"participant_id\" : \"").append(participantId).append("\"");
                         }
                     }
@@ -366,13 +361,26 @@ public class VoskTranscriptionService
                         configJson.append(", \"language\" : \"").append(transcriptionTag).append("\"");
                     }
                     
-                    // Add moderator information
+                    // Add participant information
                     if (participant != null) {
+                        // Add moderator information
                         configJson.append(", \"is_moderator\" : ").append(participant.isModerator());
+                        
+                        // Add role information
+                        String role = participant.getChatMemberRole();
+                        if (role != null && !role.isEmpty()) {
+                            configJson.append(", \"role\" : \"").append(role).append("\"");
+                        }
+                        
+                        // Add stats_id as separate field if available
+                        if (participant.getStatsId() != null && !participant.getStatsId().isEmpty()) {
+                            configJson.append(", \"stats_id\" : \"").append(participant.getStatsId()).append("\"");
+                        }
                         
                         if (logger.isDebugEnabled()) {
                             logger.debug("Participant info for Vosk - ID: " + participant.getDebugName() + 
                                        ", is_moderator: " + participant.isModerator() + 
+                                       ", role: " + role + 
                                        ", stats_id: " + participant.getStatsId());
                         }
                     }

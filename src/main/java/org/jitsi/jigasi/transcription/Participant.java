@@ -858,4 +858,20 @@ public class Participant
         this.statsId = statsId;
     }
 
+    /**
+     * Get the ChatRoom member role as string
+     *
+     * @return the role as string (e.g., "OWNER", "MEMBER", "MODERATOR") or null if not set
+     */
+    public String getChatMemberRole()
+    {
+        if (chatMember == null)
+        {
+            return null;
+        }
+
+        ChatRoomMemberRole role = chatMember.getRole();
+        return role != null ? role.toString() : null;
+    }
+
 }
