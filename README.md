@@ -224,3 +224,5 @@ build_likelion_jigasi.sh
 빌드:
 ./build_likelion_jigasi.sh
 ```
+
+작성일자: 2025/09/22
