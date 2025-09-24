@@ -11,12 +11,15 @@ COPY target/classes/org/jitsi/jigasi/CallContext.class /tmp/org/jitsi/jigasi/
 RUN cd /tmp && \
     echo "=== Updating JAR file with modified classes ===" && \
     ls -la org/jitsi/jigasi/ && \
+    echo "=== Transcription classes ===" && \
+    ls -la org/jitsi/jigasi/transcription/ && \
     echo "=== CallContext classes ===" && \
     ls -la org/jitsi/jigasi/CallContext*.class && \
     jar -uf /usr/share/jigasi/jigasi.jar \
         org/jitsi/jigasi/transcription/VoskTranscriptionService*.class \
         org/jitsi/jigasi/transcription/Transcriber*.class \
         org/jitsi/jigasi/transcription/Participant*.class \
+        org/jitsi/jigasi/transcription/SilenceFilter.class \
         org/jitsi/jigasi/JvbConference*.class \
         org/jitsi/jigasi/TranscriptionGateway*.class \
         org/jitsi/jigasi/CallContext*.class && \

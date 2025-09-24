@@ -255,14 +255,18 @@ public class VoskTranscriptionService
         public void onClose(int statusCode, String reason)
         {
             logger.warn("STT WebSocket connection closed for participant " + debugName + 
-                       ". Status: " + statusCode + ", Reason: " + reason);
+                       ". Status: " + statusCode + ", Reason: " + (reason != null ? reason : "Unknown"));
             this.session = null;
             
             // Notify participant about connection loss for potential retry
-            if (participant != null) {
-                // The participant will handle reconnection on next audio data
+            if (participant != null && !participant.isCompleted()) {
                 logger.info("STT connection lost for participant " + debugName + 
-                           ". Will retry on next audio data.");
+                           " (Status: " + statusCode + "). Will retry on next audio data.");
+                
+                // Reset retry counter for immediate reconnection attempt
+                participant.resetSttRetryCount();
+            } else if (participant != null && participant.isCompleted()) {
+                logger.debug("Participant " + debugName + " has left - skipping STT reconnection");
             }
         }
 
@@ -334,15 +338,25 @@ public class VoskTranscriptionService
         @OnWebSocketError
         public void onError(Throwable cause)
         {
-            logger.error("STT WebSocket error for participant " + debugName + ": " + cause.getMessage(), cause);
+            // Log error with more context
+            String errorType = cause.getClass().getSimpleName();
+            String errorMessage = cause.getMessage() != null ? cause.getMessage() : "Unknown error";
+            
+            logger.error("STT WebSocket error for participant " + debugName + 
+                        " [Type: " + errorType + ", Message: " + errorMessage + "]", cause);
             
             // Mark session as null to trigger reconnection attempt
             this.session = null;
             
-            // The participant will handle reconnection on next audio data
-            if (participant != null) {
-                logger.info("STT connection error for participant " + debugName + 
-                           ". Will retry on next audio data.");
+            // Notify participant about connection loss for potential retry
+            if (participant != null && !participant.isCompleted()) {
+                logger.info("STT connection lost for participant " + debugName + 
+                           " due to " + errorType + ". Will retry on next audio data.");
+                
+                // Reset retry counter to allow immediate reconnection attempt
+                participant.resetSttRetryCount();
+            } else if (participant != null && participant.isCompleted()) {
+                logger.debug("Participant " + debugName + " has left - skipping STT reconnection");
             }
         }
 
@@ -424,7 +438,23 @@ public class VoskTranscriptionService
             }
             catch (Exception e)
             {
-                logger.error("Error to send websocket request for participant " + debugName, e);
+                String errorType = e.getClass().getSimpleName();
+                String errorMessage = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                
+                logger.error("Error sending WebSocket request for participant " + debugName + 
+                           " [Type: " + errorType + ", Message: " + errorMessage + "]", e);
+                
+                // Mark session as null to trigger reconnection on next attempt
+                this.session = null;
+                
+                // Notify participant about send failure
+                if (participant != null && !participant.isCompleted()) {
+                    logger.info("STT send failed for participant " + debugName + 
+                               " due to " + errorType + ". Will retry on next audio data.");
+                    participant.resetSttRetryCount();
+                } else if (participant != null && participant.isCompleted()) {
+                    logger.debug("Participant " + debugName + " has left - skipping STT reconnection");
+                }
             }
         }
 

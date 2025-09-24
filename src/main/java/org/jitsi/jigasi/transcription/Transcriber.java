@@ -119,6 +119,12 @@ public class Transcriber
      * {@link ChatRoomMember#getName()}
      */
     private final Map<String, Participant> participants = new HashMap<>();
+    
+    /**
+     * Temporary storage for audio buffers from SSRCs that haven't been registered yet.
+     * This prevents audio loss during participant join process.
+     */
+    private final Map<Long, Queue<Buffer>> pendingAudioBuffers = new HashMap<>();
 
     /**
      * The object which will hold the actual transcription
@@ -299,6 +305,25 @@ public class Transcriber
         if (participant != null)
         {
             participant.joined();
+            
+            // Process any pending audio buffers for this participant's SSRC
+            long ssrc = participant.getSSRC();
+            synchronized (pendingAudioBuffers)
+            {
+                Queue<Buffer> pendingBuffers = pendingAudioBuffers.remove(ssrc);
+                if (pendingBuffers != null && !pendingBuffers.isEmpty())
+                {
+                    logger.info("Processing " + pendingBuffers.size() + " pending audio buffers for participant " + identifier);
+                    while (!pendingBuffers.isEmpty())
+                    {
+                        Buffer buffer = pendingBuffers.poll();
+                        if (buffer != null && participant.hasValidSourceLanguage())
+                        {
+                            participant.giveBuffer(buffer);
+                        }
+                    }
+                }
+            }
 
             TranscriptEvent event = transcript.notifyJoined(participant);
             if (event != null)
@@ -750,7 +775,24 @@ public class Transcriber
         }
         else
         {
-            logger.warn("reading from SSRC " + ssrc + " while it is not known as a participant");
+            // Store audio buffer temporarily until participant is registered
+            synchronized (pendingAudioBuffers)
+            {
+                pendingAudioBuffers.computeIfAbsent(ssrc, k -> new LinkedList<>()).offer(buffer);
+                
+                // Limit queue size to prevent memory issues
+                Queue<Buffer> queue = pendingAudioBuffers.get(ssrc);
+                if (queue.size() > 50) // Max 1 second of audio (50 * 20ms)
+                {
+                    queue.poll(); // Remove oldest buffer
+                }
+            }
+            
+            if (logger.isDebugEnabled())
+            {
+                logger.debug("Stored audio from SSRC " + ssrc + " temporarily - " +
+                           "will process when participant registers");
+            }
         }
     }
 

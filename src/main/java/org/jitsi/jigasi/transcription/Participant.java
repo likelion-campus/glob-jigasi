@@ -74,6 +74,25 @@ public class Participant
      * Last connection attempt timestamp to prevent too frequent retries
      */
     private volatile long lastConnectionAttempt = 0;
+    
+    /**
+     * Reset STT retry counter to allow immediate reconnection attempt
+     * Called when WebSocket connection fails unexpectedly
+     * Only resets if participant is still active (not left)
+     */
+    public void resetSttRetryCount()
+    {
+        // Check if participant is still active before resetting retry counter
+        if (isCompleted) {
+            logger.debug("Participant " + identifier + " has left - skipping STT retry counter reset");
+            return;
+        }
+        
+        sttRetryCount = 0;
+        lastConnectionAttempt = 0; // Allow immediate retry
+        logger.info("STT retry counter reset for participant " + identifier + 
+                   " - will attempt immediate reconnection");
+    }
 
     /**
      * The expected amount of bytes each given buffer will have. Webrtc
@@ -769,17 +788,17 @@ public class Participant
                    silenceFilter.giveSegment(audio);
                    if (silenceFilter.shouldFilter())
                    {
-                       return;
+                       return; // Filter out silence
                    }
                    else if (silenceFilter.newSpeech())
                    {
-                       // we need to cast here to keep compatability when moving between java8 and java11
+                       // Clear buffer and use current audio (no stored window)
                        ((Buffer) buffer).clear();
-                       toBuffer = silenceFilter.getSpeechWindow();
+                       toBuffer = audio; // Use current audio instead of getSpeechWindow()
                    }
                    else
                    {
-                       toBuffer = audio;
+                       toBuffer = audio; // Normal speech, use current audio
                    }
                }
                else

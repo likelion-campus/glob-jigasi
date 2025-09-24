@@ -17,100 +17,78 @@
  */
 package org.jitsi.jigasi.transcription;
 
-import org.jitsi.webrtcvadwrapper.*;
-import org.jitsi.webrtcvadwrapper.audio.*;
+// Removed WebRTC VAD imports - using simple audio level detection instead
 
 /**
- * This class uses {@link SpeechDetector<ByteSignedPcmAudioSegment>) to
- * detect silent audio.
+ * This class provides simple Voice Activity Detection (VAD) without storing audio segments.
+ * Uses basic audio level analysis to determine speech vs silence.
+ * Memory-optimized version that doesn't accumulate audio data.
  *
  * @author Nik Vaessen
  */
 public class SilenceFilter
 {
-    /**
-     * The vad mode which should be used for the {@link WebRTCVad}.
-     */
-    private static final int VAD_MODE = 1;
+    // Removed WebRTC VAD constants - using simple audio level detection instead
 
     /**
-     * The sample rate of the audio given to {@link WebRTCVad}.
+     * Simple VAD state tracking without storing audio segments
      */
-    private static final int VAD_AUDIO_HZ = 48000;
+    private boolean previousSegmentWasSpeech = false;
+    private boolean isCurrentlySpeech = false;
+    
+    /**
+     * Simple audio level threshold for VAD
+     */
+    private static final double AUDIO_LEVEL_THRESHOLD = 0.001;
 
     /**
-     * The length of each consecutive segment which is given to the
-     * {@link WebRTCVad}.
-     */
-    private static final int VAD_SEGMENT_SIZE_MS = 20;
-
-    /**
-     * The length of the audio which is considered when determining speech.
-     * In this case 10 segments (as defined above) are considered.
-     */
-    private static final int VAD_WINDOW_SIZE_MS = 200;
-
-    /**
-     * The audio is considered as silent when 8 out of 10 previous segments
-     * where determined to be not speech.
-     */
-    private static final int VAD_THRESHOLD = 8;
-
-    /**
-     * The {@link SpeechDetector} object used to detect silent audio.
-     */
-    private SpeechDetector<ByteSignedPcmAudioSegment> speechDetector
-        = new SpeechDetector<>(
-            VAD_AUDIO_HZ,
-            VAD_MODE,
-            VAD_SEGMENT_SIZE_MS,
-            VAD_WINDOW_SIZE_MS,
-            VAD_THRESHOLD);
-
-    /**
-     * Whether the previously given segment was determined to be speech.
-     */
-    private boolean previousSegmentWasSpeech;
-
-    /**
-     * Whether the latest speech segment was determined to be speech.
-     */
-    private boolean isCurrentlySpeech;
-
-    /**
-     * Give a new segment of audio
+     * Give a new segment of audio - VAD only, no storage
      *
      * @param audio the audio
      */
     public void giveSegment(byte[] audio)
     {
-        ByteSignedPcmAudioSegment segment
-            = new ByteSignedPcmAudioSegment(audio);
-
-        speechDetector.nextSegment(segment);
+        // Simple audio level based VAD without storing segments
+        double audioLevel = calculateAudioLevel(audio);
         previousSegmentWasSpeech = isCurrentlySpeech;
-        isCurrentlySpeech = speechDetector.isSpeech();
+        isCurrentlySpeech = audioLevel > AUDIO_LEVEL_THRESHOLD;
+    }
+    
+    /**
+     * Calculate audio level for simple VAD
+     */
+    private double calculateAudioLevel(byte[] audio)
+    {
+        if (audio == null || audio.length == 0) return 0.0;
+        
+        long sum = 0;
+        for (byte b : audio) {
+            sum += b * b;
+        }
+        return Math.sqrt((double) sum / audio.length);
     }
 
     /**
      * Get the whole window size in a single array.
+     * Since we don't store segments, return empty array.
+     * The Participant will use the original audio buffer instead.
      *
-     * @return the whole window as an array of bytes.
+     * @return empty array (no stored segments)
      */
     public byte[] getSpeechWindow()
     {
-        return ByteSignedPcmAudioSegment
-            .merge(speechDetector.getLatestSegments())
-            .getAudio();
+        // No segments stored - return empty array
+        // Participant will use original audio buffer
+        return new byte[0];
     }
 
     /**
      * Whether the current window is considered to be speech.
-     * @return
+     * @return true if should filter (silence), false if speech
      */
     public boolean shouldFilter()
     {
-        return !speechDetector.isSpeech();
+        return !isCurrentlySpeech;
     }
 
     /**
