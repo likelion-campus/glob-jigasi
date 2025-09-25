@@ -240,6 +240,12 @@ public class VoskTranscriptionService
          *  A new one has to be generated whenever a definitive result is received.
          */
         private UUID uuid = UUID.randomUUID();
+        
+        /**
+         * Response timeout configuration - close connection if no response for 10 minutes
+         */
+        private static final long RESPONSE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+        private volatile long lastResponseTime = System.currentTimeMillis();
 
          VoskWebsocketStreamingSession(String debugName, Participant participant)
             throws Exception
@@ -256,6 +262,10 @@ public class VoskTranscriptionService
         {
             logger.warn("STT WebSocket connection closed for participant " + debugName + 
                        ". Status: " + statusCode + ", Reason: " + (reason != null ? reason : "Unknown"));
+            
+            // Clean up WebSocket session resources
+            cleanupWebSocketSession("connection closed - Status: " + statusCode);
+            
             this.session = null;
             
             // Notify participant about connection loss for potential retry
@@ -274,6 +284,13 @@ public class VoskTranscriptionService
         public void onConnect(Session session)
         {
             this.session = session;
+            
+            // 연결 완료 시 재시도 카운터 리셋 (재시도 방지)
+            if (participant != null) {
+                participant.resetSttRetryCount();
+            }
+            
+            logger.info("STT WebSocket connection established for participant " + debugName);
         }
 
         @OnWebSocketMessage
@@ -281,6 +298,8 @@ public class VoskTranscriptionService
         {
             try
             {
+                // Update last response time when receiving any message
+                lastResponseTime = System.currentTimeMillis();
                 this.onMessageInternal(msg);
             }
             catch (ParseException e)
@@ -345,6 +364,9 @@ public class VoskTranscriptionService
             logger.error("STT WebSocket error for participant " + debugName + 
                         " [Type: " + errorType + ", Message: " + errorMessage + "]", cause);
             
+            // Clean up existing WebSocket session before marking as null
+            cleanupWebSocketSession("WebSocket error: " + errorType);
+            
             // Mark session as null to trigger reconnection attempt
             this.session = null;
             
@@ -368,6 +390,29 @@ public class VoskTranscriptionService
                 logger.warn("STT session is not available for participant " + debugName + 
                            ". Session will be recreated on next audio data.");
                 return; // Skip this audio packet - session will be recreated by participant
+            }
+            
+            // Check for response timeout (10 minutes without response)
+            long currentTime = System.currentTimeMillis();
+            long timeSinceLastResponse = currentTime - lastResponseTime;
+            if (timeSinceLastResponse > RESPONSE_TIMEOUT_MS) {
+                logger.warn("STT response timeout for participant " + debugName + 
+                           " - no response for " + (timeSinceLastResponse / 1000) + "s (max: " + 
+                           (RESPONSE_TIMEOUT_MS / 1000) + "s). Closing connection.");
+                
+                try {
+                    if (session.isOpen()) {
+                        session.close();
+                    }
+                } catch (Exception e) {
+                    logger.warn("Error closing timed out STT connection for participant " + debugName + ": " + e.getMessage());
+                }
+                
+                this.session = null;
+                if (participant != null && !participant.isCompleted()) {
+                    participant.resetSttRetryCount();
+                }
+                return;
             }
             
             try
@@ -444,6 +489,9 @@ public class VoskTranscriptionService
                 logger.error("Error sending WebSocket request for participant " + debugName + 
                            " [Type: " + errorType + ", Message: " + errorMessage + "]", e);
                 
+                // Clean up existing WebSocket session before marking as null
+                cleanupWebSocketSession("send failure");
+                
                 // Mark session as null to trigger reconnection on next attempt
                 this.session = null;
                 
@@ -462,16 +510,52 @@ public class VoskTranscriptionService
         {
             listeners.add(listener);
         }
+        
+        /**
+         * Clean up WebSocket session resources before reconnection
+         * Prevents resource leaks during connection failures
+         */
+        private void cleanupWebSocketSession(String reason)
+        {
+            if (session != null) {
+                try {
+                    if (session.isOpen()) {
+                        logger.debug("Closing WebSocket session for participant " + debugName + 
+                                   " due to " + reason);
+                        session.close();
+                    }
+                } catch (Exception e) {
+                    logger.warn("Error closing WebSocket session for participant " + debugName + 
+                               " during cleanup: " + e.getMessage());
+                }
+            }
+            
+            // Clear listeners to prevent memory leaks
+            listeners.clear();
+            
+            logger.debug("WebSocket session cleanup completed for participant " + debugName + 
+                        " due to " + reason);
+        }
 
         public void end()
         {
             try
             {
-                session.getRemote().sendString(EOF_MESSAGE);
+                if (session != null && session.isOpen()) {
+                    session.getRemote().sendString(EOF_MESSAGE);
+                }
             }
             catch (Exception e)
             {
                 logger.error("Error to finalize websocket connection for participant " + debugName, e);
+            }
+            finally
+            {
+                // Clean up WebSocket session resources
+                cleanupWebSocketSession("session ended");
+                
+                // Mark session as null
+                this.session = null;
             }
         }
 

@@ -1,5 +1,5 @@
 # 기본 Jitsi 이미지 사용
-FROM jitsi/jigasi:stable-10184
+FROM jitsi/jigasi:stable-10431
 
 # 로컬에서 빌드된 클래스 파일들을 복사
 COPY target/classes/org/jitsi/jigasi/transcription/ /tmp/org/jitsi/jigasi/transcription/

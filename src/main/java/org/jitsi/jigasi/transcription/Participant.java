@@ -58,7 +58,7 @@ public class Participant
     /**
      * Base delay between STT connection retry attempts (in milliseconds)
      */
-    private static final long STT_RETRY_BASE_DELAY_MS = 1000;
+    private static final long STT_RETRY_BASE_DELAY_MS = 5000;
     
     /**
      * Current retry attempt counter for STT connection
@@ -599,7 +599,7 @@ public class Participant
         // Check if enough time has passed since last connection attempt (prevent spam)
         long currentTime = System.currentTimeMillis();
         long timeSinceLastAttempt = currentTime - lastConnectionAttempt;
-        long minRetryInterval = STT_RETRY_BASE_DELAY_MS; // Minimum 1 second between attempts
+        long minRetryInterval = STT_RETRY_BASE_DELAY_MS; // Minimum 5 seconds between attempts
         
         if (timeSinceLastAttempt < minRetryInterval)
         {
